@@ -1,0 +1,321 @@
+%matplotlib inline
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.impute import SimpleImputer
+import joblib
+
+
+
+import re
+df = pd.read_csv("cardio_train.csv", sep=None, engine="python")
+df.columns = (df.columns.str.strip()
+                        .str.lower()
+                        .str.replace(r"[^a-z0-9]+", "_", regex=True)
+                        .str.strip("_"))
+rename_map = {
+    "sex":"gender","systolic":"ap_hi","systolic_bp":"ap_hi","aphi":"ap_hi",
+    "diastolic":"ap_lo","diastolic_bp":"ap_lo","aplo":"ap_lo",
+    "alcohol":"alco","glucose":"gluc","cardiovascular_disease":"cardio",
+    "height_cm":"height","weight_kg":"weight"
+}
+rename_map = {k:v for k,v in rename_map.items() if k in df.columns and v not in df.columns}
+df = df.rename(columns=rename_map)
+print("Columns:", df.columns.tolist())
+df.head()
+
+
+
+
+for c in ["age","gender","height","weight","ap_hi","ap_lo",
+          "cholesterol","gluc","smoke","alco","active","cardio"]:
+    if c in df.columns:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+if "age" in df.columns:
+    if df["age"].median() > 150:
+        df["age_years"] = (df["age"] / 365.25).round(0)
+    else:
+        df["age_years"] = df["age"]
+else:
+    df["age_years"] = (df["id"] % 60) + 20
+    df["age"] = df["age_years"]
+
+if {"height","weight"}.issubset(df.columns):
+    h_m = df["height"] / 100.0
+    df["BMI"] = df["weight"] / (h_m ** 2)
+    df.loc[(h_m == 0) | (h_m.isna()), "BMI"] = np.nan
+else:
+    df["BMI"] = np.nan
+
+if {"ap_hi","ap_lo"}.issubset(df.columns):
+    swap_mask = df["ap_lo"] > df["ap_hi"]
+    df.loc[swap_mask, ["ap_hi","ap_lo"]] = df.loc[swap_mask, ["ap_lo","ap_hi"]].values
+    df["ap_hi"] = df["ap_hi"].clip(60, 250)
+    df["ap_lo"] = df["ap_lo"].clip(30, 150)
+
+if "height" in df.columns:
+    df["height"] = df["height"].clip(120, 230)
+if "weight" in df.columns:
+    df["weight"] = df["weight"].clip(30, 200)
+
+num_cols = df.select_dtypes(include=[np.number]).columns
+imp = SimpleImputer(strategy="median")
+df[num_cols] = imp.fit_transform(df[num_cols])
+
+print("After preprocessing shape:", df.shape)
+df[["id","age","age_years","BMI","ap_hi","ap_lo"]].head()
+
+
+
+
+df.describe()
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.countplot(x="cardio", data=df)
+plt.title("Cardiovascular Disease Distribution")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+plt.hist(df["age_years"], bins=30, edgecolor="black")
+plt.xlabel("Age (years)")
+plt.ylabel("Count")
+plt.title("Age Distribution")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+plt.hist(df["BMI"], bins=30, edgecolor="black")
+plt.xlabel("BMI")
+plt.ylabel("Count")
+plt.title("BMI Distribution")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.countplot(x="gender", data=df)
+plt.title("Gender Distribution")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.countplot(x="gender", data=df)
+plt.title("Gender Distribution")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.countplot(x="gender", data=df)
+plt.title("Gender Distribution")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.countplot(x="smoke", data=df)
+plt.title("Smoking Habit")
+plt.show() 
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.countplot(x="alco", data=df)
+plt.title("Alcohol Consumption")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.countplot(x="active", data=df)
+plt.title("Active Lifestyle")
+plt.show()
+
+
+
+
+plt.figure(figsize=(12,5))
+plt.subplot(1,2,1)
+plt.hist(df["ap_hi"], bins=30, edgecolor="black")
+plt.title("Systolic BP Distribution")
+
+plt.subplot(1,2,2)
+plt.hist(df["ap_lo"], bins=30, edgecolor="black")
+plt.title("Diastolic BP Distribution")
+plt.show()
+
+
+
+
+plt.figure(figsize=(6,4))
+sns.boxplot(x="cardio", y="BMI", data=df)
+plt.title("BMI vs Cardiovascular Disease")
+plt.show()
+
+
+
+
+corr = df.corr()
+plt.figure(figsize=(10,8))
+sns.heatmap(corr, cmap="coolwarm", annot=False)
+plt.title("Correlation Matrix")
+plt.show()
+
+
+
+
+X = df.drop(columns=["cardio","id"])
+y = df["cardio"]
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y, test_size=0.2, random_state=42, stratify=y
+)
+
+
+
+
+log_reg = LogisticRegression(max_iter=1000)
+log_reg.fit(X_train, y_train)
+acc_lr = accuracy_score(y_test, log_reg.predict(X_test))
+print("Logistic Regression Accuracy:", acc_lr)
+
+
+
+
+
+dt = DecisionTreeClassifier(random_state=42)
+dt.fit(X_train, y_train)
+acc_dt = accuracy_score(y_test, dt.predict(X_test))
+print("Decision Tree Accuracy:", acc_dt)
+
+
+
+
+rf = RandomForestClassifier(random_state=42)
+rf.fit(X_train, y_train)
+acc_rf = accuracy_score(y_test, rf.predict(X_test))
+print("Random Forest Accuracy:", acc_rf)
+
+
+
+
+knn = KNeighborsClassifier()
+knn.fit(X_train, y_train)
+acc_knn = accuracy_score(y_test, knn.predict(X_test))
+print("KNN Accuracy:", acc_knn)
+
+
+
+
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+svm = SVC(kernel="linear", cache_size=1000)  
+
+svm.fit(X_train_scaled, y_train)
+
+y_pred_svm = svm.predict(X_test_scaled)
+
+acc_svm = accuracy_score(y_test, y_pred_svm)
+print("SVM Accuracy:", round(acc_svm*100, 2), "%")
+
+
+
+
+X2 = df.drop(["id", "cardio"], axis=1)
+y2 = df["cardio"]
+
+X2_train, X2_test, y2_train, y2_test = train_test_split(X2, y2, test_size=0.2, random_state=42, stratify=y2)
+
+scaler2 = StandardScaler()
+X2_train = scaler2.fit_transform(X2_train)
+X2_test = scaler2.transform(X2_test)
+
+best_model.fit(X2_train, y2_train)
+
+print("Best model retrained on 12 features (without 'id').")
+
+
+
+
+
+X2 = df.drop(["id", "cardio"], axis=1).values   
+y2 = df["cardio"].values
+
+X2_train, X2_test, y2_train, y2_test = train_test_split(
+    X2, y2, test_size=0.2, random_state=42, stratify=y2
+)
+
+scaler2 = StandardScaler()
+X2_train = scaler2.fit_transform(X2_train)
+X2_test = scaler2.transform(X2_test)
+
+accuracies = {
+    "Logistic Regression": acc_lr,
+    "Decision Tree": acc_dt,
+    "Random Forest": acc_rf,
+    "KNN": acc_knn,
+    "SVM": acc_svm
+}
+
+best_model_name = max(accuracies, key=accuracies.get)
+print("\n Best Model is:", best_model_name, "with accuracy:", accuracies[best_model_name])
+
+if best_model_name == "Logistic Regression":
+    best_model = log_reg
+elif best_model_name == "Decision Tree":
+    best_model = dt
+elif best_model_name == "Random Forest":
+    best_model = rf
+elif best_model_name == "KNN":
+    best_model = knn
+else:
+    best_model = svm
+
+best_model.fit(X2_train, y2_train)
+
+joblib.dump(best_model, "best_heart_model.joblib")
+
+new_patient = np.array([[45, 1, 165, 70, 130, 85, 1, 1, 0, 0, 1, 25.7]])
+
+new_patient_scaled = scaler2.transform(new_patient)
+
+prediction = best_model.predict(new_patient_scaled)
+
+if prediction[0] == 1:
+    print("Prediction: Patient is at risk of Cardiovascular Disease")
+else:
+    print("Prediction: Patient is Healthy")
